@@ -1,20 +1,61 @@
+# import libraries
 import sys
+import pandas as pd
+from sqlalchemy import create_engine
+
+import nltk
+nltk.download(['punkt', 'wordnet'])
+nltk.download('stopwords')
+from nltk.corpus import stopwords
+set(stopwords.words('english'))              
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import confusion_matrix
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.multioutput import MultiOutputClassifier
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 
 
 def load_data(database_filepath):
-    pass
+    engine = create_engine('sqlite:///InsertDatabaseName.db')
+    df = pd.read_sql_table(table_name='InsertTableName', con=engine)
+    X = df['message'].values
+    Y = df.iloc[:, 4:-1].values
+
+    return X, Y
 
 
 def tokenize(text):
-    pass
+    lemmatizer = WordNetLemmatizer()
+    tokens = [lemmatizer.lemmatize(tok).lower().strip() for tok in word_tokenize(text) if len(tok)>2]
+
+    return tokens
 
 
 def build_model():
-    pass
+    pipeline = Pipeline([
+        ('vect', CountVectorizer(tokenizer=tokenize)),
+        ('tfidf', TfidfTransformer()),
+        ('clf', MultiOutputClassifier(RandomForestClassifier()))
+    ])
+
+    X, Y = load_data()
+    X_train, X_test, y_train, y_test = train_test_split(X, Y)
+
+    # train classifier
+    pipeline.fit(X_train, y_train)
+
+    return pipeline
 
 
 def evaluate_model(model, X_test, Y_test, category_names):
-    pass
+    y_pred = model.predict(X_test)
+    accuracy = (Y_test==y_pred).mean()*100
+
+    print(accuracy)
 
 
 def save_model(model, model_filepath):
