@@ -23,22 +23,23 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 
 
-class StartingVerbExtractor(BaseEstimator, TransformerMixin):
+class VerbsFrequencyMetrics(BaseEstimator, TransformerMixin):
 
-    def starting_verb(self, text):
-        sentence_list = nltk.sent_tokenize(text)
-        for sentence in sentence_list:
-            pos_tags = nltk.pos_tag(tokenize(sentence))
-            first_word, first_tag = pos_tags[0]
-            if first_tag in ['VB', 'VBP'] or first_word == 'RT':
-                return True
-        return False
+    def verbs_frequency_score(self, text):
+        words = nltk.word_tokenize(text)
+        
+        lemmatizer = WordNetLemmatizer()
+        tokens = [lemmatizer.lemmatize(tok).lower().strip() for tok in word_tokenize(text) if len(tok)>2]
+        
+        action_words = [ tag[1] for tag in nltk.pos_tag(tokens) if tag[1] in ['VB','VBD','VBG', 'VBN', 'VBP', 'VBZ']]
+
+        return len(action_words)/(len(words)+1)
 
     def fit(self, x, y=None):
         return self
 
     def transform(self, X):
-        X_tagged = pd.Series(X).apply(self.starting_verb)
+        X_tagged = pd.Series(X).apply(self.verbs_frequency_score)
         return pd.DataFrame(X_tagged)
     
 class TextSizeExtractor(BaseEstimator, TransformerMixin):
@@ -81,14 +82,14 @@ def build_model():
                 ('tfidf', TfidfTransformer())
             ])),
             
-            ('starting_verb', StartingVerbExtractor()),
-            ('text_size', TextSizeExtractor())
+            ('verbs_frequency_score', VerbsFrequencyMetrics())
+            # ('text_size', TextSizeExtractor())
         ])),
-        
+
         ('clf', MultiOutputClassifier(RandomForestClassifier()))
     ])
 
-    parameters = {
+    parameters_2 = {
         'features__text_pipleine__vect__ngram_range': ((1,1),(1,2)),
         'features__text_pipleine__vect__max_df': (0.5, 0.75, 1.0)
     }
