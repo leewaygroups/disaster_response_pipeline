@@ -88,12 +88,12 @@ def build_model():
         ('clf', MultiOutputClassifier(RandomForestClassifier()))
     ])
 
-    parameters_2 = {
+    parameters = {
         'features__text_pipleine__vect__ngram_range': ((1,1),(1,2)),
         'features__text_pipleine__vect__max_df': (0.5, 0.75, 1.0)
     }
 
-    model = GridSearchCV(pipeline, param_grid=parameters_2)
+    model = GridSearchCV(pipeline, param_grid=parameters)
     model.fit(X_train, y_train)
 
     return model
