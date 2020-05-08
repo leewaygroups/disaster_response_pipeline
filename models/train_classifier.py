@@ -1,22 +1,60 @@
 # import libraries
 import sys
+import pickle
 import pandas as pd
 from sqlalchemy import create_engine
 
 import nltk
 nltk.download(['punkt', 'wordnet'])
 nltk.download('stopwords')
+nltk.download('averaged_perceptron_tagger')
 from nltk.corpus import stopwords
 set(stopwords.words('english'))              
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 
-from sklearn.pipeline import Pipeline
 from sklearn.metrics import confusion_matrix
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline, FeatureUnion
 from sklearn.model_selection import train_test_split
 from sklearn.multioutput import MultiOutputClassifier
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+
+
+class StartingVerbExtractor(BaseEstimator, TransformerMixin):
+
+    def starting_verb(self, text):
+        sentence_list = nltk.sent_tokenize(text)
+        for sentence in sentence_list:
+            pos_tags = nltk.pos_tag(tokenize(sentence))
+            first_word, first_tag = pos_tags[0]
+            if first_tag in ['VB', 'VBP'] or first_word == 'RT':
+                return True
+        return False
+
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, X):
+        X_tagged = pd.Series(X).apply(self.starting_verb)
+        return pd.DataFrame(X_tagged)
+    
+class TextSizeExtractor(BaseEstimator, TransformerMixin):
+    
+    def text_size(self, text):
+        lemmatizer = WordNetLemmatizer()
+        tokens = [lemmatizer.lemmatize(tok).lower().strip() for tok in word_tokenize(text) if len(tok)>2]
+        
+        return len(tokens)
+    
+    def fit(self, x, y=None):
+        return self
+    
+    def transform(self, X):
+        X_size = pd.Series(X).apply(self.text_size)
+        return pd.DataFrame(X_size)
 
 
 def load_data(database_filepath):
@@ -37,18 +75,28 @@ def tokenize(text):
 
 def build_model():
     pipeline = Pipeline([
-        ('vect', CountVectorizer(tokenizer=tokenize)),
-        ('tfidf', TfidfTransformer()),
+        ('features', FeatureUnion([
+            ('text_pipleine', Pipeline([
+                ('vect', CountVectorizer(tokenizer=tokenize)),
+                ('tfidf', TfidfTransformer())
+            ])),
+            
+            ('starting_verb', StartingVerbExtractor()),
+            ('text_size', TextSizeExtractor())
+        ])),
+        
         ('clf', MultiOutputClassifier(RandomForestClassifier()))
     ])
 
-    X, Y = load_data()
-    X_train, X_test, y_train, y_test = train_test_split(X, Y)
+    parameters_2 = {
+        'features__text_pipleine__vect__ngram_range': ((1,1),(1,2)),
+        'features__text_pipleine__vect__max_df': (0.5, 0.75, 1.0)
+    }
 
-    # train classifier
-    pipeline.fit(X_train, y_train)
+    model = GridSearchCV(pipeline, param_grid=parameters_2)
+    model.fit(X_train, y_train)
 
-    return pipeline
+    return model
 
 
 def evaluate_model(model, X_test, Y_test, category_names):
@@ -59,7 +107,7 @@ def evaluate_model(model, X_test, Y_test, category_names):
 
 
 def save_model(model, model_filepath):
-    pass
+    pickle.dump(model, open(model_filepath, 'wb'))
 
 
 def main():
